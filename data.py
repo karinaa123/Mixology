@@ -36,5 +36,5 @@ class DatasetManager:
 
 if __name__ == "__main__":
     # Test the dataset manager
-    dm = DatasetManager('./data/your-dataset-name')
+    dm = DatasetManager('./data/bottles-1')
     dm.verify_dataset()
