@@ -98,7 +98,7 @@ class BottleDetectionTrainer:
 
 def main():
     # Setup
-    DATASET_PATH = './data/bottles-1'
+    DATASET_PATH = './anaconda3/envs/kdThesisEnv/mixology/Mixology/bottles-1'
     DATA_YAML = f'{DATASET_PATH}/data.yaml'
 
     # Verify dataset
