@@ -5,11 +5,24 @@ import anthropic
 import json
 import time
 import requests
+import os
+from dotenv import load_dotenv
 
 # ==========================================
 # 1. Configuration & Custom Styling (Fonts)
 # ==========================================
 st.set_page_config(page_title="AI Mixologist", page_icon="🍷", layout="centered")
+
+# Load environment variables from .env file
+load_dotenv()
+
+
+# Get API key from environment variable (fallback to session state)
+def get_api_key():
+    """Get API key from environment or session state"""
+    env_key = os.getenv("ANTHROPIC_API_KEY")
+    session_key = st.session_state.get("api_key")
+    return session_key if session_key else env_key
 
 
 # Load Lottie Animation (Helper function)
@@ -117,12 +130,13 @@ def categorize_bottles(brands, api_key):
     """
     try:
         msg = client.messages.create(
-            model="claude-3-5-sonnet-20240620",
+            model="claude-sonnet-4-20250514",  # Updated to current model
             max_tokens=1000,
             messages=[{"role": "user", "content": prompt}]
         )
         return json.loads(msg.content[0].text)
-    except:
+    except Exception as e:
+        st.error(f"Error categorizing bottles: {e}")
         return {"Uncategorized": brands}
 
 
@@ -164,7 +178,7 @@ def generate_recipe(inventory, mixers, prefs, api_key):
     with client.messages.stream(
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
-            model="claude-3-5-sonnet-20240620",
+            model="claude-sonnet-4-20250514",  # Updated to current model
     ) as stream:
         for text in stream.text_stream:
             yield text
@@ -175,9 +189,20 @@ def generate_recipe(inventory, mixers, prefs, api_key):
 # ==========================================
 with st.sidebar:
     st.header("Settings")
-    api_key_input = st.text_input("Claude API Key", type="password")
-    if api_key_input:
-        st.session_state.api_key = api_key_input
+
+    # Check if API key exists in environment
+    env_key = os.getenv("ANTHROPIC_API_KEY")
+    if env_key:
+        st.success("✅ API Key loaded from environment")
+        if "api_key" not in st.session_state:
+            st.session_state.api_key = env_key
+    else:
+        st.warning("⚠️ No API key in environment")
+        api_key_input = st.text_input("Enter Claude API Key", type="password")
+        if api_key_input:
+            st.session_state.api_key = api_key_input
+            st.success("✅ API Key set")
+
     st.divider()
     if st.button("Reset App"):
         st.session_state.clear()
@@ -231,8 +256,9 @@ elif st.session_state.step == "upload":
                                       accept_multiple_files=True)
 
     if uploaded_files and st.button("Analyze Bottles"):
-        if not st.session_state.get("api_key"):
-            st.error("Please enter your API Key in the sidebar.")
+        api_key = get_api_key()
+        if not api_key:
+            st.error("❌ Please enter your API Key in the sidebar or set ANTHROPIC_API_KEY in .env file")
         else:
             with st.spinner("Scanning your bar..."):
                 all_detected = set()
@@ -248,7 +274,7 @@ elif st.session_state.step == "upload":
                 detected_list = list(all_detected)
 
                 # Claude Categorization
-                categorized = categorize_bottles(detected_list, st.session_state.api_key)
+                categorized = categorize_bottles(detected_list, api_key)
                 st.session_state.inventory_dict = categorized
 
                 # Flatten for the next step's multiselect
@@ -354,30 +380,45 @@ elif st.session_state.step == "mixing":
             unsafe_allow_html=True
         )
 
+    # Get API key
+    api_key = get_api_key()
+
+    if not api_key:
+        animation_placeholder.empty()
+        st.error("❌ API Key not found. Please add it in the sidebar.")
+        st.session_state.step = "refine"
+        st.stop()
+
     # Generate Recipe
     output_placeholder = st.empty()
-    recipe_stream = generate_recipe(
-        st.session_state.flat_inventory,
-        st.session_state.preferences['mixers'],
-        st.session_state.preferences,
-        st.session_state.api_key
-    )
+    try:
+        recipe_stream = generate_recipe(
+            st.session_state.flat_inventory,
+            st.session_state.preferences['mixers'],
+            st.session_state.preferences,
+            api_key
+        )
 
-    # Clear animation
-    animation_placeholder.empty()
+        # Clear animation
+        animation_placeholder.empty()
 
-    # Stream result
-    full_response = output_placeholder.write_stream(recipe_stream)
+        # Stream result
+        full_response = output_placeholder.write_stream(recipe_stream)
 
-    # Save result to history
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
-    st.session_state.step = "done"
+        # Save result to history
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
+        st.session_state.step = "done"
+    except Exception as e:
+        animation_placeholder.empty()
+        st.error(f"❌ Error generating recipe: {e}")
+        st.session_state.step = "refine"
 
 elif st.session_state.step == "done":
     if st.button("Make Another Drink 🔄"):
         # Keep API Key, reset logic
-        key = st.session_state.api_key
+        key = st.session_state.get("api_key")
         st.session_state.clear()
-        st.session_state.api_key = key
+        if key:
+            st.session_state.api_key = key
         st.session_state.step = "mood"
         st.rerun()

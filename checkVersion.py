@@ -1,6 +1,6 @@
 import anthropic
 
-client = anthropic.Anthropic(api_key="your-api-key-here")
+client = anthropic.Anthropic(api_key="")
 
 # Try different models
 models_to_test = [
