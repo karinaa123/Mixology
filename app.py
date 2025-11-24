@@ -117,7 +117,7 @@ def categorize_bottles(brands, api_key):
     """
     try:
         msg = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-3-5-sonnet-20240620",
             max_tokens=1000,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -164,7 +164,7 @@ def generate_recipe(inventory, mixers, prefs, api_key):
     with client.messages.stream(
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
-            model="claude-3-5-sonnet-20241022",
+            model="claude-3-5-sonnet-20240620",
     ) as stream:
         for text in stream.text_stream:
             yield text
