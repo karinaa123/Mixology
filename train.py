@@ -15,7 +15,7 @@ class BottleDetectionTrainer:
         self.model = YOLO(f'yolov8{model_size}.pt')
         self.results = None
 
-    def train(self, epochs=50, imgsz=640, batch=16, name='bottle_detector'):
+    def train(self, epochs=100, imgsz=640, batch=16, name='bottle_detector'):
         """Train the model"""
         print(f"Starting training for {epochs} epochs...")
 
