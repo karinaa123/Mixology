@@ -266,7 +266,8 @@ elif st.session_state.step == "upload":
                 # Process each image
                 for uploaded_file in uploaded_files:
                     image = Image.open(uploaded_file)
-                    results = model(image)
+                    # New code - lowers confidence threshold to 15%
+                    results = model(image, conf=0.15)
                     for r in results:
                         for box in r.boxes:
                             all_detected.add(model.names[int(box.cls[0])])
