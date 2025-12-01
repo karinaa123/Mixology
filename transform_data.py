@@ -46,16 +46,41 @@ class DatasetSynthesizer:
 
     def remove_white_bg(self, image):
         """
-        Creates a mask where white pixels are removed.
+        SMART VERSION: Finds the bottle outline and protects the inside.
         """
-        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        # 1. Convert to grayscale
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-        # Sensitivity settings for "White"
-        lower_white = np.array([0, 0, 210])
-        upper_white = np.array([180, 40, 255])
+        # 2. Threshold: Find everything that is NOT pure white
+        # We look for pixels darker than 240 (0=black, 255=white)
+        # This gives us a rough shape of the bottle
+        _, thresh = cv2.threshold(gray, 240, 255, cv2.THRESH_BINARY_INV)
 
-        mask = cv2.inRange(hsv, lower_white, upper_white)
-        return cv2.bitwise_not(mask)
+        # 3. Find Contours (Shapes)
+        # This finds the outlines of all objects in the thresholded image
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # If we didn't find any bottle shape, return a full mask (keep everything)
+        if not contours:
+            return np.ones(gray.shape, dtype=np.uint8) * 255
+
+        # 4. Find the Largest Contour (The Bottle)
+        # Small specks of dust might be detected, we want the big bottle
+        c = max(contours, key=cv2.contourArea)
+
+        # 5. Create a "Solid Mask"
+        # We create a black image and draw a SOLID white shape of the bottle
+        mask = np.zeros(gray.shape, dtype=np.uint8)
+        cv2.drawContours(mask, [c], -1, 255, -1)  # -1 means fill inside
+
+        # 6. Smooth the edges (Optional but makes it look nicer)
+        # This removes jagged pixel edges
+        mask = cv2.GaussianBlur(mask, (5, 5), 0)
+
+        # 7. Threshold the mask again to make it sharp after blurring
+        _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
+
+        return mask
 
     def process(self):
         print(f"Starting transformation...")
