@@ -118,14 +118,14 @@ def main():
         imgsz=640,
         batch=16,
         name='bottle_detector_v1',
-        hsv_h = 0.015,  # Adjust Hue (color)
-        hsv_s = 0.7,  # Adjust Saturation (make it look different lights)
-        hsv_v = 0.4,  # Adjust Value (brightness)
-        degrees = 10.0,  # Rotate slightly
-        translate = 0.1,  # Move the object around
-        scale = 0.5,  # Zoom in/out
-        mosaic = 1.0,  # MUST BE 1.0 (Mixes 4 images together)
-        mixup = 0.1,  # Mixes 2 images together (makes them transparent)
+        # hsv_h = 0.015,  # Adjust Hue (color)
+        # hsv_s = 0.7,  # Adjust Saturation (make it look different lights)
+        # hsv_v = 0.4,  # Adjust Value (brightness)
+        # degrees = 10.0,  # Rotate slightly
+        # translate = 0.1,  # Move the object around
+        # scale = 0.5,  # Zoom in/out
+        # mosaic = 1.0,  # MUST BE 1.0 (Mixes 4 images together)
+        # mixup = 0.1,  # Mixes 2 images together (makes them transparent)
     )
 
     # Plot metrics
