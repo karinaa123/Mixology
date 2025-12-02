@@ -76,6 +76,9 @@ if "flat_inventory" not in st.session_state:
     st.session_state.flat_inventory = []
 if "preferences" not in st.session_state:
     st.session_state.preferences = {}
+# NEW: Store images here so they persist across reruns
+if "detected_images" not in st.session_state:
+    st.session_state.detected_images = []
 
 
 # ==========================================
@@ -135,7 +138,6 @@ def generate_recipe(inventory, mixers, prefs, api_key):
     """
     client = anthropic.Anthropic(api_key=api_key)
 
-    # --- MODIFIED PROMPT FOR RESOURCEFULNESS ---
     prompt = f"""
     Act as a Resourceful Home Bartender.
 
@@ -149,9 +151,9 @@ def generate_recipe(inventory, mixers, prefs, api_key):
     Your Goal: Create the best possible cocktail using ONLY what the user likely has.
 
     STRICT RULES:
-    1. **Prioritize Inventory**: Do NOT suggest a recipe that requires buying obscure liqueurs (like Chartreuse, Absinthe, or specific Bitters) unless the user has them.
-    2. **Minimize Shopping**: Try to create a drink using 100% of the user's inventory + common kitchen items (sugar, water, ice, lemon/lime).
-    3. **Substitutions are Mandatory**: If the user is missing an ingredient (even a fresh fruit), you MUST provide a "Kitchen Hack" substitution.
+    1. **Prioritize Inventory**: Do NOT suggest a recipe that requires buying obscure liqueurs unless necessary.
+    2. **Minimize Shopping**: Try to create a drink using 100% of the user's inventory + common kitchen items.
+    3. **Substitutions are Mandatory**: If the user is missing an ingredient, provide a "Kitchen Hack".
 
     Output Format (Markdown):
     # [Cocktail Name]
@@ -163,10 +165,7 @@ def generate_recipe(inventory, mixers, prefs, api_key):
     * Mark missing items with ⚠️
 
     ### 🔄 Substitutions & Kitchen Hacks
-    * [Missing Ingredient 1] -> [What to use instead from a normal house]
-    * (Example: "No Simple Syrup? Just dissolve sugar in hot water.")
-    * (Example: "No Lemon? Use Lime or a splash of vinegar/citric acid.")
-    * (Example: "No Shaker? Use a jar with a tight lid.")
+    * [Missing Ingredient 1] -> [What to use instead]
 
     ### Instructions
     1. Step 1...
@@ -257,44 +256,38 @@ elif st.session_state.step == "upload":
         else:
             with st.spinner("Scanning your bar..."):
                 all_detected = set()
+                st.session_state.detected_images = []  # Clear previous scans
 
-                # Display images in a grid if there are multiple
-                cols = st.columns(len(uploaded_files)) if len(uploaded_files) < 4 else [st.container() for _ in
-                                                                                        range(len(uploaded_files))]
+                # Use columns for processing display
+                cols = st.columns(3)
 
                 for idx, uploaded_file in enumerate(uploaded_files):
-                    # 1. Load and Fix Rotation (Crucial for phone pics)
                     image = Image.open(uploaded_file)
                     image = ImageOps.exif_transpose(image)
 
-                    # 2. Run AI Detection
-                    # conf=0.15 is the sensitivity. Lower it if it misses bottles.
+                    # Run AI
                     results = model(image, conf=0.15)
 
-                    # 3. Display "Robot Vision" (The image with boxes)
-                    # channels="BGR" is needed because YOLO uses BGR colors, Streamlit uses RGB
+                    # Plot and Save to Session State
                     res_plotted = results[0].plot()
+                    st.session_state.detected_images.append(res_plotted)
 
-                    # Display in the column
-                    with cols[idx % len(cols)]:
-                        st.image(res_plotted, caption=f"Scanned: {uploaded_file.name}", channels="BGR",
-                                 use_container_width=True)
+                    # Show immediately (optional, but good for feedback)
+                    with cols[idx % 3]:
+                        st.image(res_plotted, caption=f"Pic #{idx + 1}", channels="BGR", use_container_width=True)
 
-                    # 4. Extract text labels for the logic
                     for r in results:
                         for box in r.boxes:
                             cls_name = model.names[int(box.cls[0])]
                             all_detected.add(cls_name)
 
-                # --- Proceed to Logic ---
                 detected_list = list(all_detected)
 
                 if not detected_list:
-                    st.warning("⚠️ I didn't see any bottles I recognize. Try a clearer photo or lower the confidence?")
-                    # Optional: Let them proceed anyway to manual entry
-                    st.session_state.flat_inventory = []
-                    st.session_state.step = "verify"
-                    if st.button("Continue to Manual Entry"):
+                    st.warning("⚠️ I didn't see any bottles I recognize.")
+                    if st.button("Continue Manual"):
+                        st.session_state.flat_inventory = []
+                        st.session_state.step = "verify"
                         st.rerun()
                 else:
                     categorized = categorize_bottles(detected_list, api_key)
@@ -306,13 +299,23 @@ elif st.session_state.step == "upload":
                     st.session_state.flat_inventory = flat_list
 
                     st.success("Analysis Complete!")
-                    time.sleep(1)  # Small pause so user can see the robot vision
+                    time.sleep(1)
                     st.session_state.step = "verify"
                     st.rerun()
 
 # --- STEP 3: VERIFY INVENTORY ---
 elif st.session_state.step == "verify":
     st.write("---")
+
+    # === NEW: Show the Saved Images ===
+    if st.session_state.detected_images:
+        with st.expander("📸 View Scanned Images (Click to Open)", expanded=True):
+            img_cols = st.columns(3)
+            for i, img in enumerate(st.session_state.detected_images):
+                with img_cols[i % 3]:
+                    st.image(img, channels="BGR", use_container_width=True)
+    # ==================================
+
     st.info("Here is what I found. Verify the list:")
 
     cols = st.columns(3)
