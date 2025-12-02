@@ -265,10 +265,31 @@ elif st.session_state.step == "upload":
                 for uploaded_file in uploaded_files:
                     image = Image.open(uploaded_file)
                     # New code - lowers confidence threshold to 15%
-                    results = model(image, conf=0.15)
+                    results = model(image, conf=0.05)
                     for r in results:
                         for box in r.boxes:
                             all_detected.add(model.names[int(box.cls[0])])
+                            # --- DEBUG SECTION START ---
+                            st.write("🔍 **Debug Info:**")
+                            # ---------------------------
+
+                            for uploaded_file in uploaded_files:
+                                image = Image.open(uploaded_file)
+
+                                # Run model with VERY low confidence to see everything
+                                results = model(image, conf=0.01)
+
+                                for r in results:
+                                    # Print what the model sees (even if confidence is low)
+                                    st.text(f"File: {uploaded_file.name}")
+                                    for box in r.boxes:
+                                        cls_name = model.names[int(box.cls[0])]
+                                        conf = float(box.conf[0])
+                                        st.text(f"  Found: {cls_name} (Confidence: {conf:.2f})")
+
+                                        # Only add to list if confidence is decent (e.g. > 0.15)
+                                        if conf > 0.15:
+                                            all_detected.add(cls_name)
 
                 detected_list = list(all_detected)
 
