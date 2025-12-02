@@ -1,0 +1,7 @@
+streamlit
+ultralytics
+Pillow
+anthropic
+requests
+python-dotenv
+opencv-python-headless
