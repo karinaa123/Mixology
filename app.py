@@ -13,23 +13,34 @@ from dotenv import load_dotenv
 # ==========================================
 st.set_page_config(page_title="AI Mixologist", page_icon="🍷", layout="centered")
 
-# Load environment variables
+# Load environment variables (Critical for local lab computer)
 load_dotenv()
 
 
 def get_api_key():
-    """Get API key from Session State, Streamlit Secrets, or Environment"""
-    # 1. Session State (User typed it)
+    """Robustly get API key without crashing on missing secrets file"""
+
+    # 1. Check Session State (User manually typed it)
     if st.session_state.get("api_key"):
         return st.session_state.api_key
-    # 2. Streamlit Cloud Secrets
-    if "ANTHROPIC_API_KEY" in st.secrets:
-        return st.secrets["ANTHROPIC_API_KEY"]
-    # 3. Local Environment
-    return os.getenv("ANTHROPIC_API_KEY")
+
+    # 2. Check Local Environment (.env file) -> PRIORITY FOR LOCAL LAB COMPUTER
+    env_key = os.getenv("ANTHROPIC_API_KEY")
+    if env_key:
+        return env_key
+
+    # 3. Check Streamlit Secrets (Cloud) - Wrapped in TRY/EXCEPT to prevent crash
+    try:
+        if "ANTHROPIC_API_KEY" in st.secrets:
+            return st.secrets["ANTHROPIC_API_KEY"]
+    except (FileNotFoundError, Exception):
+        # This catches the StreamlitSecretNotFoundError so the app doesn't crash locally
+        pass
+
+    return None
 
 
-# Custom CSS (White Text Fix)
+# Custom CSS
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;600&display=swap');
@@ -117,7 +128,7 @@ def categorize_bottles(brands, api_key):
     """
     try:
         msg = client.messages.create(
-            model="claude-3-haiku-20240307",  # HAIKU: Works on ALL accounts
+            model="claude-3-haiku-20240307",  # Works on ALL accounts
             max_tokens=1000,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -171,7 +182,7 @@ def generate_recipe(inventory, mixers, prefs, api_key):
         with client.messages.stream(
                 max_tokens=1024,
                 messages=[{"role": "user", "content": prompt}],
-                model="claude-3-haiku-20240307",  # HAIKU: Works on ALL accounts
+                model="claude-3-haiku-20240307",  # Works on ALL accounts
         ) as stream:
             for text in stream.text_stream:
                 yield text
@@ -184,6 +195,8 @@ def generate_recipe(inventory, mixers, prefs, api_key):
 # ==========================================
 with st.sidebar:
     st.header("Settings")
+
+    # This will now safely check .env first, then Secrets (safely), then Manual
     active_key = get_api_key()
 
     if active_key:
@@ -195,6 +208,7 @@ with st.sidebar:
             st.rerun()
     else:
         st.warning("⚠️ API Key Missing")
+        st.caption("Add to .env file or enter below:")
         api_key_input = st.text_input("Enter Claude API Key", type="password")
         if api_key_input:
             st.session_state.api_key = api_key_input
@@ -259,6 +273,7 @@ elif st.session_state.step == "upload":
                 for idx, uploaded_file in enumerate(uploaded_files):
                     image = Image.open(uploaded_file)
                     image = ImageOps.exif_transpose(image)
+                    # Lowered confidence
                     results = model(image, conf=0.15)
 
                     if results:
