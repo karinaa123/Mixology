@@ -19,20 +19,24 @@ load_dotenv()
 
 def get_api_key():
     """Get API key from Session State, Streamlit Secrets, or Environment"""
+    # 1. Session State (User typed it)
     if st.session_state.get("api_key"):
         return st.session_state.api_key
+    # 2. Streamlit Cloud Secrets
     if "ANTHROPIC_API_KEY" in st.secrets:
         return st.secrets["ANTHROPIC_API_KEY"]
+    # 3. Local Environment
     return os.getenv("ANTHROPIC_API_KEY")
 
 
-# Custom CSS
+# Custom CSS (White Text Fix)
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;600&display=swap');
 
+    /* Force Text Colors */
     h1, h2, h3, h4, h5, h6 { color: #E0E0E0 !important; }
-    p, .stMarkdown, li, span, label { color: #FFFFFF !important; }
+    p, .stMarkdown, li, span, label, div { color: #FFFFFF !important; }
 
     h1 {
         font-family: 'Playfair Display', serif;
@@ -44,16 +48,17 @@ st.markdown("""
     html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
     .stApp { background-color: #0E1117; color: #FFFFFF; }
 
+    /* Buttons */
     .stButton>button {
         border-radius: 25px;
         background-color: #1C1C1C;
-        color: white;
+        color: white !important;
         border: 1px solid #333;
         transition: all 0.3s;
     }
     .stButton>button:hover {
         border-color: #FF4B4B;
-        color: #FF4B4B;
+        color: #FF4B4B !important;
         transform: scale(1.02);
     }
 
@@ -112,36 +117,35 @@ def categorize_bottles(brands, api_key):
     """
     try:
         msg = client.messages.create(
-            model="claude-3-5-sonnet-20241022",  # <--- UPDATED MODEL HERE
+            model="claude-3-haiku-20240307",  # HAIKU: Works on ALL accounts
             max_tokens=1000,
             messages=[{"role": "user", "content": prompt}]
         )
         return json.loads(msg.content[0].text)
     except Exception as e:
-        st.error(f"Error categorizing bottles: {e}")
+        st.error(f"Error categorizing: {e}")
         return {"Uncategorized": brands}
 
 
 def generate_recipe(inventory, mixers, prefs, api_key):
-    """Generates recipe based on specific constraints."""
+    """Generates recipe using Haiku model."""
     client = anthropic.Anthropic(api_key=api_key)
 
     prompt = f"""
     Act as a Resourceful Home Bartender.
 
     User Profile:
-    - **Current Inventory (Liquor)**: {inventory}
-    - **Current Mixers/Pantry**: {mixers}
-    - **General Mood**: {prefs.get('general_flavor')}
-    - **Specific Style**: {prefs.get('specific_style')}
+    - **Current Inventory**: {inventory}
+    - **Mixers**: {mixers}
+    - **Mood**: {prefs.get('general_flavor')}
+    - **Style**: {prefs.get('specific_style')}
     - **Strength**: {prefs.get('strength')}
 
-    Your Goal: Create the best possible cocktail using ONLY what the user likely has.
+    Goal: Create the best cocktail using ONLY what the user has.
 
     STRICT RULES:
-    1. **Prioritize Inventory**: Do NOT suggest a recipe that requires buying obscure liqueurs unless necessary.
-    2. **Minimize Shopping**: Try to create a drink using 100% of the user's inventory + common kitchen items.
-    3. **Substitutions are Mandatory**: If the user is missing an ingredient, provide a "Kitchen Hack".
+    1. **Prioritize Inventory**: Do NOT suggest recipes requiring buying new liquor.
+    2. **Kitchen Hacks**: If an ingredient is missing, provide a substitution.
 
     Output Format (Markdown):
     # [Cocktail Name]
@@ -149,11 +153,11 @@ def generate_recipe(inventory, mixers, prefs, api_key):
 
     ### Ingredients
     * List quantities.
-    * Mark user's owned items with ✅
+    * Mark owned items with ✅
     * Mark missing items with ⚠️
 
-    ### 🔄 Substitutions & Kitchen Hacks
-    * [Missing Ingredient 1] -> [What to use instead]
+    ### 🔄 Substitutions
+    * [Missing Item] -> [Household Substitute]
 
     ### Instructions
     1. Step 1...
@@ -163,13 +167,16 @@ def generate_recipe(inventory, mixers, prefs, api_key):
     Describe the taste.
     """
 
-    with client.messages.stream(
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
-            model="claude-3-5-sonnet-20241022",  # <--- UPDATED MODEL HERE
-    ) as stream:
-        for text in stream.text_stream:
-            yield text
+    try:
+        with client.messages.stream(
+                max_tokens=1024,
+                messages=[{"role": "user", "content": prompt}],
+                model="claude-3-haiku-20240307",  # HAIKU: Works on ALL accounts
+        ) as stream:
+            for text in stream.text_stream:
+                yield text
+    except Exception as e:
+        yield f"⚠️ **Error:** {str(e)}"
 
 
 # ==========================================
@@ -237,8 +244,7 @@ if st.session_state.step == "mood":
 # --- STEP 2: UPLOAD & DETECT ---
 elif st.session_state.step == "upload":
     st.subheader("Show me your bar 📸")
-    uploaded_files = st.file_uploader("Upload photos of your bottles", type=['jpg', 'png', 'jpeg'],
-                                      accept_multiple_files=True)
+    uploaded_files = st.file_uploader("Upload photos", type=['jpg', 'png', 'jpeg'], accept_multiple_files=True)
 
     if uploaded_files and st.button("Analyze Bottles"):
         api_key = get_api_key()
@@ -254,21 +260,21 @@ elif st.session_state.step == "upload":
                     image = Image.open(uploaded_file)
                     image = ImageOps.exif_transpose(image)
                     results = model(image, conf=0.15)
-                    res_plotted = results[0].plot()
-                    st.session_state.detected_images.append(res_plotted)
 
-                    with cols[idx % 3]:
-                        st.image(res_plotted, caption=f"Pic #{idx + 1}", channels="BGR", use_container_width=True)
-
-                    for r in results:
-                        for box in r.boxes:
-                            all_detected.add(model.names[int(box.cls[0])])
+                    if results:
+                        res_plotted = results[0].plot()
+                        st.session_state.detected_images.append(res_plotted)
+                        with cols[idx % 3]:
+                            st.image(res_plotted, caption=f"Pic #{idx + 1}", channels="BGR", use_container_width=True)
+                        for r in results:
+                            for box in r.boxes:
+                                all_detected.add(model.names[int(box.cls[0])])
 
                 detected_list = list(all_detected)
 
                 if not detected_list:
-                    st.warning("⚠️ I didn't see any bottles I recognize.")
-                    if st.button("Continue Manual"):
+                    st.warning("⚠️ No bottles detected.")
+                    if st.button("Manual Entry"):
                         st.session_state.flat_inventory = []
                         st.session_state.step = "verify"
                         st.rerun()
@@ -294,7 +300,7 @@ elif st.session_state.step == "verify":
                 with img_cols[i % 3]:
                     st.image(img, channels="BGR", use_container_width=True)
 
-    st.info("Here is what I found. Verify the list:")
+    st.info("Verify your inventory:")
     cols = st.columns(3)
     idx = 0
     for category, items in st.session_state.inventory_dict.items():
@@ -305,9 +311,9 @@ elif st.session_state.step == "verify":
                     st.caption(f"- {item}")
             idx += 1
 
-    st.write("**Missing something? Add it here:**")
+    st.write("**Add missing items:**")
     final_inventory = st.multiselect(
-        "Confirm Inventory",
+        "Inventory",
         options=["Vodka", "Gin", "Rum", "Whiskey", "Tequila", "Brandy", "Vermouth", "Cointreau", "Baileys",
                  "Kahlua"] + st.session_state.flat_inventory,
         default=st.session_state.flat_inventory
@@ -352,12 +358,6 @@ elif st.session_state.step == "refine":
 
 # --- STEP 6: MIXING ---
 elif st.session_state.step == "mixing":
-    animation_placeholder = st.empty()
-    with animation_placeholder.container():
-        st.markdown("""<div style="display: flex; justify-content: center; margin-bottom: 20px;">
-                <img src="https://media.giphy.com/media/l0HlOaQcLJ2hHpYcw/giphy.gif" width="300" style="border-radius: 15px;">
-            </div><h3 style="text-align: center;">Mixing with what you have...</h3>""", unsafe_allow_html=True)
-
     api_key = get_api_key()
     if not api_key:
         st.error("❌ API Key missing.")
@@ -371,12 +371,10 @@ elif st.session_state.step == "mixing":
             st.session_state.preferences,
             api_key
         )
-        animation_placeholder.empty()
         full_response = output_placeholder.write_stream(recipe_stream)
         st.session_state.messages.append({"role": "assistant", "content": full_response})
         st.session_state.step = "done"
     except Exception as e:
-        animation_placeholder.empty()
         st.error(f"❌ Error: {e}")
 
 elif st.session_state.step == "done":
