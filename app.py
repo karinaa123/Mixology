@@ -13,44 +13,26 @@ from dotenv import load_dotenv
 # ==========================================
 st.set_page_config(page_title="AI Mixologist", page_icon="🍷", layout="centered")
 
-# Load environment variables from .env file (for local development)
+# Load environment variables
 load_dotenv()
 
 
 def get_api_key():
     """Get API key from Session State, Streamlit Secrets, or Environment"""
-
-    # 1. Check if user manually entered it in the sidebar (Session State)
     if st.session_state.get("api_key"):
         return st.session_state.api_key
-
-    # 2. Check Streamlit Cloud Secrets (Crucial for Deployment)
     if "ANTHROPIC_API_KEY" in st.secrets:
         return st.secrets["ANTHROPIC_API_KEY"]
-
-    # 3. Check Local Environment (.env file)
     return os.getenv("ANTHROPIC_API_KEY")
 
 
-# Custom CSS for Fonts and UI (With White Text Fix)
+# Custom CSS
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;600&display=swap');
 
-    /* Force all standard headers to be white */
-    h1, h2, h3, h4, h5, h6 {
-        color: #E0E0E0 !important;
-    }
-
-    /* Force standard text, paragraphs, and markdown to be white */
-    p, .stMarkdown, li, span {
-        color: #FFFFFF !important;
-    }
-
-    /* Force widget labels to be white */
-    label, .st-emotion-cache-16idsys p {
-        color: #FFFFFF !important;
-    }
+    h1, h2, h3, h4, h5, h6 { color: #E0E0E0 !important; }
+    p, .stMarkdown, li, span, label { color: #FFFFFF !important; }
 
     h1 {
         font-family: 'Playfair Display', serif;
@@ -59,14 +41,9 @@ st.markdown("""
         margin-bottom: 30px;
     }
 
-    html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
-    }
-
-    /* App Background - Dark Mode */
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
     .stApp { background-color: #0E1117; color: #FFFFFF; }
 
-    /* Button Styling */
     .stButton>button {
         border-radius: 25px;
         background-color: #1C1C1C;
@@ -80,32 +57,20 @@ st.markdown("""
         transform: scale(1.02);
     }
 
-    /* Chat Bubble Styling */
     .stChatMessage { background-color: #1E1E1E; border-radius: 12px; }
-
-    /* Multiselect text fix */
-    .stMultiSelect span {
-        color: #FFFFFF !important;
-    }
+    .stMultiSelect span { color: #FFFFFF !important; }
     </style>
     """, unsafe_allow_html=True)
 
 # ==========================================
 # 2. Session State Management
 # ==========================================
-if "step" not in st.session_state:
-    st.session_state.step = "mood"
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-if "inventory_dict" not in st.session_state:
-    st.session_state.inventory_dict = {}
-if "flat_inventory" not in st.session_state:
-    st.session_state.flat_inventory = []
-if "preferences" not in st.session_state:
-    st.session_state.preferences = {}
-# NEW: Store images here so they persist across reruns
-if "detected_images" not in st.session_state:
-    st.session_state.detected_images = []
+if "step" not in st.session_state: st.session_state.step = "mood"
+if "messages" not in st.session_state: st.session_state.messages = []
+if "inventory_dict" not in st.session_state: st.session_state.inventory_dict = {}
+if "flat_inventory" not in st.session_state: st.session_state.flat_inventory = []
+if "preferences" not in st.session_state: st.session_state.preferences = {}
+if "detected_images" not in st.session_state: st.session_state.detected_images = []
 
 
 # ==========================================
@@ -128,9 +93,7 @@ except:
 # ==========================================
 
 def categorize_bottles(brands, api_key):
-    """
-    Uses Claude to categorize detected brands into the 6 Base Liquors.
-    """
+    """Uses Claude to categorize detected brands."""
     client = anthropic.Anthropic(api_key=api_key)
     prompt = f"""
     I have these detected bottle labels: {brands}.
@@ -149,7 +112,7 @@ def categorize_bottles(brands, api_key):
     """
     try:
         msg = client.messages.create(
-            model="claude-3-5-sonnet-20240620",
+            model="claude-3-5-sonnet-20241022",  # <--- UPDATED MODEL HERE
             max_tokens=1000,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -160,9 +123,7 @@ def categorize_bottles(brands, api_key):
 
 
 def generate_recipe(inventory, mixers, prefs, api_key):
-    """
-    Generates recipe based on specific constraints with a focus on existing inventory.
-    """
+    """Generates recipe based on specific constraints."""
     client = anthropic.Anthropic(api_key=api_key)
 
     prompt = f"""
@@ -205,44 +166,32 @@ def generate_recipe(inventory, mixers, prefs, api_key):
     with client.messages.stream(
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
-            model="claude-3-5-sonnet-20240620",
+            model="claude-3-5-sonnet-20241022",  # <--- UPDATED MODEL HERE
     ) as stream:
         for text in stream.text_stream:
             yield text
 
 
 # ==========================================
-# 5. Sidebar (API Key - FIXED LOGIC)
+# 5. Sidebar (API Key)
 # ==========================================
 with st.sidebar:
     st.header("Settings")
-
-    # 1. Use the helper to check ALL sources (Env, Secrets, or Manual Input)
     active_key = get_api_key()
 
     if active_key:
-        # IF WE HAVE A KEY (From anywhere), show Green
         st.success("✅ API Key Ready")
-
-        # Sync it to session state just in case
         if "api_key" not in st.session_state:
             st.session_state.api_key = active_key
-
-        # Optional: Button to clear it if you want to switch keys
         if st.button("Change Key"):
             st.session_state.api_key = None
             st.rerun()
-
     else:
-        # ONLY show warning if we have NO key at all
         st.warning("⚠️ API Key Missing")
-        st.caption("Please add it in Streamlit Secrets or enter below:")
-
         api_key_input = st.text_input("Enter Claude API Key", type="password")
-
         if api_key_input:
             st.session_state.api_key = api_key_input
-            st.rerun()  # <--- This reloads the app to trigger the "Success" block above
+            st.rerun()
 
     st.divider()
     if st.button("Reset App"):
@@ -267,8 +216,7 @@ display_chat()
 # --- STEP 1: GENERAL FLAVOR ---
 if st.session_state.step == "mood":
     if not st.session_state.messages:
-        st.session_state.messages.append(
-            {"role": "assistant", "content": "Welcome. What's the vibe today? 🍷"})
+        st.session_state.messages.append({"role": "assistant", "content": "Welcome. What's the vibe today? 🍷"})
         st.rerun()
 
     st.subheader("Select a Vibe:")
@@ -281,12 +229,12 @@ if st.session_state.step == "mood":
         if col.button(flavor, use_container_width=True):
             st.session_state.preferences['general_flavor'] = flavor
             st.session_state.messages.append({"role": "user", "content": flavor})
-            st.session_state.messages.append({"role": "assistant",
-                                              "content": "Got it. Let's see what bottles you have. Upload a photo! 📸"})
+            st.session_state.messages.append(
+                {"role": "assistant", "content": "Got it. Let's see what bottles you have. Upload a photo! 📸"})
             st.session_state.step = "upload"
             st.rerun()
 
-# --- STEP 2: UPLOAD & DETECT (ROBOT VISION) ---
+# --- STEP 2: UPLOAD & DETECT ---
 elif st.session_state.step == "upload":
     st.subheader("Show me your bar 📸")
     uploaded_files = st.file_uploader("Upload photos of your bottles", type=['jpg', 'png', 'jpeg'],
@@ -299,30 +247,22 @@ elif st.session_state.step == "upload":
         else:
             with st.spinner("Scanning your bar..."):
                 all_detected = set()
-                st.session_state.detected_images = []  # Clear previous scans
-
-                # Use columns for processing display
+                st.session_state.detected_images = []
                 cols = st.columns(3)
 
                 for idx, uploaded_file in enumerate(uploaded_files):
                     image = Image.open(uploaded_file)
                     image = ImageOps.exif_transpose(image)
-
-                    # Run AI
                     results = model(image, conf=0.15)
-
-                    # Plot and Save to Session State
                     res_plotted = results[0].plot()
                     st.session_state.detected_images.append(res_plotted)
 
-                    # Show immediately (optional, but good for feedback)
                     with cols[idx % 3]:
                         st.image(res_plotted, caption=f"Pic #{idx + 1}", channels="BGR", use_container_width=True)
 
                     for r in results:
                         for box in r.boxes:
-                            cls_name = model.names[int(box.cls[0])]
-                            all_detected.add(cls_name)
+                            all_detected.add(model.names[int(box.cls[0])])
 
                 detected_list = list(all_detected)
 
@@ -335,32 +275,26 @@ elif st.session_state.step == "upload":
                 else:
                     categorized = categorize_bottles(detected_list, api_key)
                     st.session_state.inventory_dict = categorized
-
                     flat_list = []
                     for cat, items in categorized.items():
                         flat_list.extend(items)
                     st.session_state.flat_inventory = flat_list
-
                     st.success("Analysis Complete!")
                     time.sleep(1)
                     st.session_state.step = "verify"
                     st.rerun()
 
-# --- STEP 3: VERIFY INVENTORY ---
+# --- STEP 3: VERIFY ---
 elif st.session_state.step == "verify":
     st.write("---")
-
-    # === Show the Saved Images (Persisted) ===
     if st.session_state.detected_images:
-        with st.expander("📸 View Scanned Images (Click to Open)", expanded=True):
+        with st.expander("📸 View Scanned Images", expanded=True):
             img_cols = st.columns(3)
             for i, img in enumerate(st.session_state.detected_images):
                 with img_cols[i % 3]:
                     st.image(img, channels="BGR", use_container_width=True)
-    # =========================================
 
     st.info("Here is what I found. Verify the list:")
-
     cols = st.columns(3)
     idx = 0
     for category, items in st.session_state.inventory_dict.items():
@@ -381,8 +315,7 @@ elif st.session_state.step == "verify":
 
     if st.button("Confirm Inventory ✅"):
         st.session_state.flat_inventory = final_inventory
-        st.session_state.messages.append(
-            {"role": "assistant", "content": f"Bar locked in."})
+        st.session_state.messages.append({"role": "assistant", "content": f"Bar locked in."})
         st.session_state.messages.append({"role": "assistant", "content": "What mixers/kitchen items do you have?"})
         st.session_state.step = "mixers"
         st.rerun()
@@ -390,21 +323,19 @@ elif st.session_state.step == "verify":
 # --- STEP 4: MIXERS ---
 elif st.session_state.step == "mixers":
     st.write("---")
-    st.markdown("Select **everything** you have (even basic kitchen stuff):")
+    st.markdown("Select **everything** you have:")
     mixer_options = [
         "Coke", "Soda Water", "Tonic", "Ginger Beer", "Sprite",
         "Lemon (Fresh)", "Lime (Fresh)", "Orange Juice", "Cranberry Juice",
         "Sugar", "Honey", "Maple Syrup", "Bitters", "Mint", "Ice", "Milk/Cream", "Coffee"
     ]
-
     selected_mixers = st.multiselect("Pantry & Mixers", options=mixer_options)
-
     if st.button("Next Step"):
         st.session_state.preferences['mixers'] = selected_mixers
         st.session_state.step = "refine"
         st.rerun()
 
-# --- STEP 5: REFINE PREFERENCES ---
+# --- STEP 5: REFINE ---
 elif st.session_state.step == "refine":
     st.write("---")
     col1, col2 = st.columns(2)
@@ -419,16 +350,13 @@ elif st.session_state.step == "refine":
         st.session_state.step = "mixing"
         st.rerun()
 
-# --- STEP 6: MIXING RESULT ---
+# --- STEP 6: MIXING ---
 elif st.session_state.step == "mixing":
     animation_placeholder = st.empty()
     with animation_placeholder.container():
-        st.markdown(
-            """<div style="display: flex; justify-content: center; margin-bottom: 20px;">
+        st.markdown("""<div style="display: flex; justify-content: center; margin-bottom: 20px;">
                 <img src="https://media.giphy.com/media/l0HlOaQcLJ2hHpYcw/giphy.gif" width="300" style="border-radius: 15px;">
-            </div><h3 style="text-align: center;">Mixing with what you have...</h3>""",
-            unsafe_allow_html=True
-        )
+            </div><h3 style="text-align: center;">Mixing with what you have...</h3>""", unsafe_allow_html=True)
 
     api_key = get_api_key()
     if not api_key:
