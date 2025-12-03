@@ -18,10 +18,19 @@ load_dotenv()
 
 
 def get_api_key():
-    """Get API key from environment or session state"""
-    env_key = os.getenv("ANTHROPIC_API_KEY")
-    session_key = st.session_state.get("api_key")
-    return session_key if session_key else env_key
+    """Get API key from Session State, Streamlit Secrets, or Environment"""
+
+    # 1. Check if user manually entered it in the sidebar
+    if st.session_state.get("api_key"):
+        return st.session_state.api_key
+
+    # 2. Check Streamlit Cloud Secrets (This is what fixes your issue!)
+    # Streamlit Cloud stores the TOML secrets here
+    if "ANTHROPIC_API_KEY" in st.secrets:
+        return st.secrets["ANTHROPIC_API_KEY"]
+
+    # 3. Check Local Environment (for your lab computer/.env file)
+    return os.getenv("ANTHROPIC_API_KEY")
 
 
 # Custom CSS for Fonts and UI
