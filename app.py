@@ -13,35 +13,48 @@ from dotenv import load_dotenv
 # ==========================================
 st.set_page_config(page_title="AI Mixologist", page_icon="🍷", layout="centered")
 
-# Load environment variables from .env file
+# Load environment variables from .env file (for local development)
 load_dotenv()
 
 
 def get_api_key():
     """Get API key from Session State, Streamlit Secrets, or Environment"""
 
-    # 1. Check if user manually entered it in the sidebar
+    # 1. Check if user manually entered it in the sidebar (Session State)
     if st.session_state.get("api_key"):
         return st.session_state.api_key
 
-    # 2. Check Streamlit Cloud Secrets (This is what fixes your issue!)
-    # Streamlit Cloud stores the TOML secrets here
+    # 2. Check Streamlit Cloud Secrets (Crucial for Deployment)
     if "ANTHROPIC_API_KEY" in st.secrets:
         return st.secrets["ANTHROPIC_API_KEY"]
 
-    # 3. Check Local Environment (for your lab computer/.env file)
+    # 3. Check Local Environment (.env file)
     return os.getenv("ANTHROPIC_API_KEY")
 
 
-# Custom CSS for Fonts and UI
+# Custom CSS for Fonts and UI (With White Text Fix)
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;600&display=swap');
 
+    /* Force all standard headers to be white */
+    h1, h2, h3, h4, h5, h6 {
+        color: #E0E0E0 !important;
+    }
+
+    /* Force standard text, paragraphs, and markdown to be white */
+    p, .stMarkdown, li, span {
+        color: #FFFFFF !important;
+    }
+
+    /* Force widget labels to be white */
+    label, .st-emotion-cache-16idsys p {
+        color: #FFFFFF !important;
+    }
+
     h1 {
         font-family: 'Playfair Display', serif;
         font-size: 3.5rem !important;
-        color: #E0E0E0;
         text-align: center;
         margin-bottom: 30px;
     }
@@ -69,6 +82,11 @@ st.markdown("""
 
     /* Chat Bubble Styling */
     .stChatMessage { background-color: #1E1E1E; border-radius: 12px; }
+
+    /* Multiselect text fix */
+    .stMultiSelect span {
+        color: #FFFFFF !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -194,21 +212,37 @@ def generate_recipe(inventory, mixers, prefs, api_key):
 
 
 # ==========================================
-# 5. Sidebar (API Key)
+# 5. Sidebar (API Key - FIXED LOGIC)
 # ==========================================
 with st.sidebar:
     st.header("Settings")
-    env_key = os.getenv("ANTHROPIC_API_KEY")
-    if env_key:
-        st.success("✅ API Key loaded")
+
+    # 1. Use the helper to check ALL sources (Env, Secrets, or Manual Input)
+    active_key = get_api_key()
+
+    if active_key:
+        # IF WE HAVE A KEY (From anywhere), show Green
+        st.success("✅ API Key Ready")
+
+        # Sync it to session state just in case
         if "api_key" not in st.session_state:
-            st.session_state.api_key = env_key
+            st.session_state.api_key = active_key
+
+        # Optional: Button to clear it if you want to switch keys
+        if st.button("Change Key"):
+            st.session_state.api_key = None
+            st.rerun()
+
     else:
-        st.warning("⚠️ No API key in env")
+        # ONLY show warning if we have NO key at all
+        st.warning("⚠️ API Key Missing")
+        st.caption("Please add it in Streamlit Secrets or enter below:")
+
         api_key_input = st.text_input("Enter Claude API Key", type="password")
+
         if api_key_input:
             st.session_state.api_key = api_key_input
-            st.success("✅ API Key set")
+            st.rerun()  # <--- This reloads the app to trigger the "Success" block above
 
     st.divider()
     if st.button("Reset App"):
@@ -261,7 +295,7 @@ elif st.session_state.step == "upload":
     if uploaded_files and st.button("Analyze Bottles"):
         api_key = get_api_key()
         if not api_key:
-            st.error("❌ Please check API Key")
+            st.error("❌ Please check API Key settings in the sidebar.")
         else:
             with st.spinner("Scanning your bar..."):
                 all_detected = set()
@@ -316,14 +350,14 @@ elif st.session_state.step == "upload":
 elif st.session_state.step == "verify":
     st.write("---")
 
-    # === NEW: Show the Saved Images ===
+    # === Show the Saved Images (Persisted) ===
     if st.session_state.detected_images:
         with st.expander("📸 View Scanned Images (Click to Open)", expanded=True):
             img_cols = st.columns(3)
             for i, img in enumerate(st.session_state.detected_images):
                 with img_cols[i % 3]:
                     st.image(img, channels="BGR", use_container_width=True)
-    # ==================================
+    # =========================================
 
     st.info("Here is what I found. Verify the list:")
 
